@@ -1,12 +1,16 @@
+# importing required libraries
 import math
-import os
-from PyQt5 import QtCore
-from PyQt5.QtCore import *
 from threading import Thread
+from PyQt5.QtCore import *
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import *
 from PyQt5.QtWebEngineWidgets import *
+from PyQt5.QtPrintSupport import *
+import os
+import sys
 from pytube import YouTube
 
-from message_box import *
+from message_box import show_critical_messagebox
 
 global TUBESOURCE_DOWNLOAD_DIR
 
@@ -98,17 +102,17 @@ class DownloadScreen(QWidget):
         self.layout.addWidget(self.download_btn)
         
         for stream in progressive_streams:
-            resource_name = f"full {stream.resolution}"
+            resource_name = f"full {stream.resolution} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
             self.streams_dic[resource_name] = stream
             QListWidgetItem(resource_name, self.all_in_one_list_view)
         
         for stream in videos_streams:
-            resource_name = f"video {stream.resolution}"
+            resource_name = f"video {stream.resolution} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
             self.streams_dic[resource_name] = stream
             QListWidgetItem(resource_name, self.video_list_view)
             
         for stream in audios_streams:
-            resource_name = f"audio {stream.mime_type.split('/')[1]}"
+            resource_name = f"audio {stream.mime_type.split('/')[1]} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
             self.streams_dic[resource_name] = stream
             QListWidgetItem(resource_name, self.audio_list_view)
         
@@ -116,15 +120,16 @@ class DownloadScreen(QWidget):
     def download(self, url, yt):
         self.download_url = url
         self.youtube_obj = yt
-        t = Thread(target=self.pick_streams)
-        t.start()
+        self.pick_streams()
 
-
+ 
+# creating main window class
 class MainWindow(QMainWindow):
-
-    def __init__(self):
+ 
+    # constructor
+    def __init__(self, *args, **kwargs):
         global TUBESOURCE_DOWNLOAD_DIR
-        super(MainWindow, self).__init__()
+        super(MainWindow, self).__init__(*args, **kwargs)
         self.resize(1000, 600)
         self.setWindowTitle("TubeSource")
         self.widget = QWidget()
@@ -143,9 +148,11 @@ class MainWindow(QMainWindow):
         if TUBESOURCE_DOWNLOAD_DIR == None:
             TUBESOURCE_DOWNLOAD_DIR = 'C:\\Users\\dsidi\\Downloads'
             os.environ['TUBESOURCE_DOWNLOAD_DIR'] = TUBESOURCE_DOWNLOAD_DIR
+ 
 
+ 
         # widgets settings
-        self.browser.setUrl(QUrl("https://youtube.com"))
+        self.browser.setUrl(QUrl("https://www.youtube.com"))
         self.progress_bar.setValue(0)
 
         # adding action when url get changed
@@ -233,9 +240,12 @@ class MainWindow(QMainWindow):
         self.bottomtoolbarlayout.addWidget(self.progress_bar)
         self.bottomtoolbarlayout.addWidget(self.download_btn)
         self.download_btn.clicked.connect(self.download)
-        
+ 
+ 
     def progress_function(self, stream, chunk, bytes_remaining):
-        pass
+        filesize = stream.filesize
+        current = ((filesize - bytes_remaining)/filesize)
+        self.progress_bar.setValue(math.floor(current*100))
         
     def on_complet(self, stream, filepath):
         pass
@@ -279,12 +289,17 @@ class MainWindow(QMainWindow):
 
         # setting cursor position of the url bar
         self.urlbar.setCursorPosition(0)
-
-try:
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-
-    app.exec()
-except Exception as e:
-    print(e)
+ 
+ 
+# creating a pyQt5 application
+app = QApplication(sys.argv)
+ 
+# setting name to the application
+app.setApplicationName("TubeSource")
+ 
+# creating a main window object
+window = MainWindow()
+window.show()
+ 
+# loop
+app.exec_()
