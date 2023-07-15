@@ -1,3 +1,5 @@
+import math
+import os
 from PyQt5 import QtCore
 from PyQt5.QtCore import *
 from threading import Thread
@@ -6,6 +8,7 @@ from pytube import YouTube
 
 from message_box import *
 
+global TUBESOURCE_DOWNLOAD_DIR
 
 class DownloadScreen(QWidget):
     def __init__(self):
@@ -18,11 +21,14 @@ class DownloadScreen(QWidget):
         self.layout = QVBoxLayout()
         self.video_ctn = QVBoxLayout()
         self.audio_ctn = QVBoxLayout()
+        self.all_in_one_ctn = QVBoxLayout()
         self.download_btn = QPushButton("Get")
         self.video_ctn_title = QLabel("Videos")
         self.audio_ctn_title = QLabel("Audios")
+        self.all_in_one_ctn_title = QLabel("All in one")
         self.video_list_view = QListView()
         self.audio_list_view = QListView()
+        self.all_in_one_list_view = QListView()
         self.loading_title = QLabel("Loading...")
 
         # widgets setting
@@ -32,31 +38,44 @@ class DownloadScreen(QWidget):
         # list views
         self.video_list_view = QListWidget()
         self.audio_list_view = QListWidget()
+        self.all_in_one_list_view = QListWidget()
         # --------------
 
         self.video_ctn.addWidget(self.video_ctn_title)
         self.audio_ctn.addWidget(self.audio_ctn_title)
+        self.all_in_one_ctn.addWidget(self.all_in_one_ctn_title)
         self.setLayout(self.layout)
         self.download_btn.clicked.connect(self.get_ressource)
+        self.all_in_one_list_view.currentRowChanged.connect(lambda: self.normalize_all_in_one_list_views_click())
         self.video_list_view.currentRowChanged.connect(lambda: self.normalize_video_list_views_click())
         self.audio_list_view.currentRowChanged.connect(lambda: self.normalize_audio_list_views_click())
 
         # styles
         self.video_ctn_title.setStyleSheet("background-color: PaleGreen;")
         self.audio_ctn_title.setStyleSheet("background-color: PaleGreen;")
+        self.all_in_one_ctn_title.setStyleSheet("background-color: PaleGreen;")
         self.video_ctn.addWidget(self.video_list_view)
         self.audio_ctn.addWidget(self.audio_list_view)
+        self.all_in_one_ctn.addWidget(self.all_in_one_list_view)
 
     def normalize_audio_list_views_click(self):
         self.selected_ressource = str(self.audio_list_view.currentItem().text())
         self.video_list_view.clearSelection()
+        self.all_in_one_list_view.clearSelection()
 
     def normalize_video_list_views_click(self):
         self.selected_ressource = str(self.video_list_view.currentItem().text())
         self.audio_list_view.clearSelection()
+        self.all_in_one_list_view.clearSelection()
+        
+    def normalize_all_in_one_list_views_click(self):
+        self.selected_ressource = str(self.all_in_one_list_view.currentItem().text())
+        self.audio_list_view.clearSelection()
+        self.video_list_view.clearSelection()
 
     def stream_down(self):
-        self.streams_dic[self.selected_ressource].download()
+        global TUBESOURCE_DOWNLOAD_DIR
+        self.streams_dic[self.selected_ressource].download(output_path=TUBESOURCE_DOWNLOAD_DIR,skip_existing=True)
 
     def get_ressource(self):
         try:
@@ -68,28 +87,31 @@ class DownloadScreen(QWidget):
 
     def pick_streams(self):
         self.streams = self.youtube_obj.streams
+        progressive_streams = self.streams.filter(progressive=True)
+        videos_streams = self.streams.filter(only_video=True)
+        audios_streams = self.streams.filter(only_audio=True)
         for i in reversed(range(self.layout.count())):
             self.layout.itemAt(i).widget().deleteLater()
+        self.layout.addLayout(self.all_in_one_ctn)
         self.layout.addLayout(self.video_ctn)
         self.layout.addLayout(self.audio_ctn)
         self.layout.addWidget(self.download_btn)
-        videos_resolutions = {}
-
-        for stream in self.streams:
-            if stream.mime_type.__contains__("video"):
-                if int(stream.resolution.split("p")[0]) in videos_resolutions:
-                    videos_resolutions[int(stream.resolution.split("p")[0])].append(
-                        f"{stream.mime_type}   {stream.resolution}")
-                else:
-                    videos_resolutions[int(stream.resolution.split("p")[0])] = [
-                        f"{stream.mime_type}   {stream.resolution}"]
-                self.streams_dic[f"{stream.mime_type}   {stream.resolution}"] = stream
-            elif stream.mime_type.__contains__("audio"):
-                QListWidgetItem(stream.mime_type, self.audio_list_view)
-                self.streams_dic[stream.mime_type] = stream
-        for k in sorted(videos_resolutions, reverse=True):
-            for l in videos_resolutions[k]:
-                QListWidgetItem(l, self.video_list_view)
+        
+        for stream in progressive_streams:
+            resource_name = f"full {stream.resolution}"
+            self.streams_dic[resource_name] = stream
+            QListWidgetItem(resource_name, self.all_in_one_list_view)
+        
+        for stream in videos_streams:
+            resource_name = f"video {stream.resolution}"
+            self.streams_dic[resource_name] = stream
+            QListWidgetItem(resource_name, self.video_list_view)
+            
+        for stream in audios_streams:
+            resource_name = f"audio {stream.mime_type.split('/')[1]}"
+            self.streams_dic[resource_name] = stream
+            QListWidgetItem(resource_name, self.audio_list_view)
+        
 
     def download(self, url, yt):
         self.download_url = url
@@ -101,6 +123,7 @@ class DownloadScreen(QWidget):
 class MainWindow(QMainWindow):
 
     def __init__(self):
+        global TUBESOURCE_DOWNLOAD_DIR
         super(MainWindow, self).__init__()
         self.resize(1000, 600)
         self.setWindowTitle("TubeSource")
@@ -108,12 +131,22 @@ class MainWindow(QMainWindow):
         self.bottomtoolbar = QWidget()
         self.layout = QVBoxLayout()
         self.browser = QWebEngineView()
+        self.progress_container = QHBoxLayout()
         self.bottomtoolbarlayout = QHBoxLayout()
         self.download_btn = QPushButton("Download")
         self.download_window = None
+        self.current_downloading_label = QLabel("")
+        self.current_downloading_remaind_count = 0
+        self.progress_bar = QProgressBar(self)
+        
+        TUBESOURCE_DOWNLOAD_DIR = os.environ.get('TUBESOURCE_DOWNLOAD_DIR', None)
+        if TUBESOURCE_DOWNLOAD_DIR == None:
+            TUBESOURCE_DOWNLOAD_DIR = 'C:\\Users\\dsidi\\Downloads'
+            os.environ['TUBESOURCE_DOWNLOAD_DIR'] = TUBESOURCE_DOWNLOAD_DIR
 
         # widgets settings
         self.browser.setUrl(QUrl("https://youtube.com"))
+        self.progress_bar.setValue(0)
 
         # adding action when url get changed
         self.browser.urlChanged.connect(self.update_urlbar)
@@ -196,13 +229,22 @@ class MainWindow(QMainWindow):
         self.widget.setLayout(self.layout)
         self.setCentralWidget(self.widget)
         self.bottomtoolbarlayout.setAlignment(Qt.AlignRight)
+        self.bottomtoolbarlayout.addWidget(self.current_downloading_label)
+        self.bottomtoolbarlayout.addWidget(self.progress_bar)
         self.bottomtoolbarlayout.addWidget(self.download_btn)
         self.download_btn.clicked.connect(self.download)
-
+        
+    def progress_function(self, stream, chunk, bytes_remaining):
+        pass
+        
+    def on_complet(self, stream, filepath):
+        pass
+        
     def download(self):
         url = str(self.browser.url().url())
         try:
-            yt = YouTube(url)
+            yt = YouTube(url,on_progress_callback=self.progress_function,on_complete_callback=self.on_complet,use_oauth=False,
+        allow_oauth_cache=True)
             self.download_window = DownloadScreen()
             self.download_window.setWindowModality(Qt.ApplicationModal)
             self.download_window.show()
@@ -214,7 +256,7 @@ class MainWindow(QMainWindow):
     # method called by the home action
     def navigate_home(self):
         # open the google
-        self.browser.setUrl(QUrl("https://www.google.com"))
+        self.browser.setUrl(QUrl("https://www.youtube.com"))
 
     # method called by the line edit when return key is pressed
     def navigate_to_url(self):
@@ -238,9 +280,11 @@ class MainWindow(QMainWindow):
         # setting cursor position of the url bar
         self.urlbar.setCursorPosition(0)
 
+try:
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
 
-app = QApplication(sys.argv)
-window = MainWindow()
-window.show()
-
-app.exec()
+    app.exec()
+except Exception as e:
+    print(e)
