@@ -237,8 +237,8 @@ class DownloadScreen(QWidget):
     def stream_down():
         global TUBESOURCE_DOWNLOAD_DIR
         try:
-            MainWindow.download_list_view.setCurrentRow(0)
-            ob = list(filter(lambda x: (f"{x['title']} {x['type']}" in MainWindow.download_list_view.currentItem().text()), MainWindow.download_list))[0]
+            ob = MainWindow.download_list[0]
+            MainWindow.current_download_title.setText(f"{ob['title']} {ob['type']}")
             DownloadScreen.stream_to_download[f"{ob['title']} {ob['type']}"].download(output_path=TUBESOURCE_DOWNLOAD_DIR,skip_existing=False)
         except Exception as e:
             print(e)
@@ -254,6 +254,7 @@ class MainWindow(QMainWindow):
     current_yt_object_url = None
     progress_bar = None
     download_window = None
+    current_download_title = None
  
     # constructor
     def __init__(self, *args, **kwargs):
@@ -271,7 +272,8 @@ class MainWindow(QMainWindow):
         self.bottomtoolbarlayout = QHBoxLayout()
         self.download_btn = QPushButton("Download")
         self.current_downloading_remaind_count = 0
-        self.stackLayout = QStackedLayout()
+        self.progress_indicators_layout = QVBoxLayout()
+        MainWindow.current_download_title = QLabel()
         MainWindow.progress_bar = QProgressBar(self)
         
         MainWindow.current_downloading_label = QLabel("")
@@ -287,6 +289,7 @@ class MainWindow(QMainWindow):
         self.browser.setUrl(QUrl("https://www.youtube.com"))
         MainWindow.progress_bar.setValue(0)
         self.download_list_view_layout.addWidget(MainWindow.download_list_view)
+        self.download_list_view.currentRowChanged.connect(lambda: self.normalize_download_list_views_click())
 
         # adding action when url get changed
         self.browser.urlChanged.connect(self.update_urlbar)
@@ -371,11 +374,16 @@ class MainWindow(QMainWindow):
         self.widget.setLayout(self.main_container)
         self.setCentralWidget(self.widget)
         self.bottomtoolbarlayout.setAlignment(Qt.AlignRight)
+        self.bottomtoolbarlayout.addLayout(self.progress_indicators_layout)
         self.bottomtoolbarlayout.addWidget(MainWindow.current_downloading_label)
-        self.bottomtoolbarlayout.addWidget(self.progress_bar)
+        self.progress_indicators_layout.addWidget(self.progress_bar)
+        self.progress_indicators_layout.addWidget(MainWindow.current_download_title)
         self.bottomtoolbarlayout.addWidget(self.download_btn)
         self.download_btn.clicked.connect(self.download)
- 
+        
+    def normalize_download_list_views_click(self):
+        MainWindow.download_list_view.setCurrentRow(0)
+        print(MainWindow.download_list_view.currentRow())
  
     def progress_function(stream, chunk, bytes_remaining):
         pass
@@ -388,13 +396,8 @@ class MainWindow(QMainWindow):
     def complete_function(stream, filepath):
         print("download finish.")
         try:
-            print(len(MainWindow.download_list))
-            MainWindow.download_list = list(filter(lambda x: (f"{x['title']} {x['type']}" != MainWindow.download_list_view.currentItem().text()), MainWindow.download_list))
-            print(len(MainWindow.download_list))
-            listItems = MainWindow.download_list_view.selectedItems()
-            for item in listItems:
-                MainWindow.download_list_view.takeItem(MainWindow.download_list_view.row(item))
-            #MainWindow.download_list_view.takeItem(0)
+            MainWindow.download_list.pop(0)
+            MainWindow.download_list_view.takeItem(0)
             if len(MainWindow.download_list) != 0:
                 #MainWindow.progress_bar.setValue(0)
                 t = Thread(target=DownloadScreen.stream_down)
