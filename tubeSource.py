@@ -12,7 +12,7 @@ from pytube import YouTube, Playlist, extract
 
 from message_box import show_critical_messagebox
 
-global TUBESOURCE_DOWNLOAD_DIR
+TUBESOURCE_DOWNLOAD_DIR = None
 
 class PlayListDownloadSettingScreen(QWidget):
     qualityRowCombo = None
@@ -48,14 +48,20 @@ class PlayListDownloadSettingScreen(QWidget):
         self.saveButton.pressed.connect(self.closeWin)
         
     def closeWin(self):
+        self.close()
+        t = Thread(target=self.parse_playlist, daemon=True)
+        t.start()
+        
+    def parse_playlist(self):
+        start = True if len(MainWindow.download_list) == 0 else False
         PlayListDownloadSettingScreen.currentQuality = PlayListDownloadSettingScreen.qualityRowCombo.currentText()
         PlayListDownloadSettingScreen.currentType = PlayListDownloadSettingScreen.typeRowCombo.currentText()
-        self.close()
         try:
-            for url in MainWindow.current_playlist_object.video_urls[0]:
+            for url in MainWindow.current_playlist_object:
                 MainWindow.current_yt_object_url = url
                 MainWindow.current_yt_object = YouTube(url,on_progress_callback=MainWindow.progress_function,on_complete_callback=MainWindow.complete_function,use_oauth=False,
             allow_oauth_cache=True)
+                print(url)
                 if PlayListDownloadSettingScreen.currentType == "complete":
                     t = {}
                     for stream in MainWindow.current_yt_object.streams.filter(progressive=True):
@@ -89,16 +95,22 @@ class PlayListDownloadSettingScreen(QWidget):
                     elif PlayListDownloadSettingScreen.currentQuality == "Low":
                         stream = t[str(min(t.keys()))]
                 DownloadScreen.selected_ressource = f"{PlayListDownloadSettingScreen.currentType} {stream.resolution} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
-                if DownloadScreen.currentType == "audio":
+                if PlayListDownloadSettingScreen.currentType == "audio":
                     DownloadScreen.selected_ressource = f"audio {stream.mime_type.split('/')[1]} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
-                print(DownloadScreen.selected_ressource)
                 DownloadScreen.stream_to_download[MainWindow.current_yt_object.title + f" {DownloadScreen.selected_ressource}"] = stream
                 DownloadScreen.is_playlist = True
-                t = Thread(target=DownloadScreen.get_ressource)
-                t.start()
+                DownloadScreen.get_ressource()
             DownloadScreen.is_playlist = False
+            if start:
+                MainWindow.download_list_view.setCurrentRow(0)
+                t = Thread(target=DownloadScreen.stream_down)
+                t.start()
         except Exception as e:
             print(e)
+            if start:
+                MainWindow.download_list_view.setCurrentRow(0)
+                t = Thread(target=DownloadScreen.stream_down)
+                t.start()
 
 
 class DownloadScreen(QWidget):
@@ -169,19 +181,18 @@ class DownloadScreen(QWidget):
     def get_ressource():
         start = False
         try:
-            DownloadScreen.close()
+            MainWindow.download_window.close()
             if not DownloadScreen.is_playlist:
                 DownloadScreen.stream_to_download[MainWindow.current_yt_object.title + f" {DownloadScreen.selected_ressource}"] = DownloadScreen.streams_dic[DownloadScreen.selected_ressource]
             if len(MainWindow.download_list) == 0:
                 start = True
-            down_itm = {"title": MainWindow.current_yt_object.title, "video_id":extract.video_id(MainWindow.current_yt_object_url), "type": DownloadScreen.selected_ressource}
+            down_itm = {"title": MainWindow.current_yt_object.title, "id":extract.video_id(MainWindow.current_yt_object_url), "type": DownloadScreen.selected_ressource}
             if down_itm not in MainWindow.download_list:
                 MainWindow.download_list.append(down_itm)
                 QListWidgetItem(MainWindow.current_yt_object.title + f" {DownloadScreen.selected_ressource}", MainWindow.download_list_view)
-                MainWindow.download_list_view.setCurrentRow(0)
-            if start:
-                pass
-                #DownloadScreen.stream_down()
+            if start and not DownloadScreen.is_playlist:
+                t = Thread(target=DownloadScreen.stream_down)
+                t.start()
         except Exception as e:
             print(e)
 
@@ -226,6 +237,7 @@ class DownloadScreen(QWidget):
     def stream_down():
         global TUBESOURCE_DOWNLOAD_DIR
         try:
+            MainWindow.download_list_view.setCurrentRow(0)
             ob = list(filter(lambda x: (f"{x['title']} {x['type']}" in MainWindow.download_list_view.currentItem().text()), MainWindow.download_list))[0]
             DownloadScreen.stream_to_download[f"{ob['title']} {ob['type']}"].download(output_path=TUBESOURCE_DOWNLOAD_DIR,skip_existing=False)
         except Exception as e:
@@ -241,6 +253,7 @@ class MainWindow(QMainWindow):
     curren_playlist_object = None
     current_yt_object_url = None
     progress_bar = None
+    download_window = None
  
     # constructor
     def __init__(self, *args, **kwargs):
@@ -257,15 +270,14 @@ class MainWindow(QMainWindow):
         self.progress_container = QHBoxLayout()
         self.bottomtoolbarlayout = QHBoxLayout()
         self.download_btn = QPushButton("Download")
-        self.download_window = None
         self.current_downloading_remaind_count = 0
+        self.stackLayout = QStackedLayout()
         MainWindow.progress_bar = QProgressBar(self)
         
         MainWindow.current_downloading_label = QLabel("")
-        MainWindow.download_list_view = QListView()
         MainWindow.download_list_view = QListWidget()
         
-        TUBESOURCE_DOWNLOAD_DIR = os.environ.get('TUBESOURCE_DOWNLOAD_DIR', None)
+        #TUBESOURCE_DOWNLOAD_DIR = os.environ.get('TUBESOURCE_DOWNLOAD_DIR', None)
         if TUBESOURCE_DOWNLOAD_DIR == None:
             TUBESOURCE_DOWNLOAD_DIR = 'C:\\Users\\dsidi\\Downloads'
             os.environ['TUBESOURCE_DOWNLOAD_DIR'] = TUBESOURCE_DOWNLOAD_DIR
@@ -366,23 +378,29 @@ class MainWindow(QMainWindow):
  
  
     def progress_function(stream, chunk, bytes_remaining):
+        pass
+        """
         filesize = stream.filesize
         current = ((filesize - bytes_remaining)/filesize)
         MainWindow.progress_bar.setValue(math.floor(current*100))
+        """
         
     def complete_function(stream, filepath):
-        pass
-        """try:
-            MainWindow.download_list.pop(0)
-            MainWindow.download_list_view.removeItemWidget(MainWindow.download_list_view.currentItem())
-            MainWindow.download_list_view.setCurrentRow(0)
+        print("download finish.")
+        try:
+            print(len(MainWindow.download_list))
+            MainWindow.download_list = list(filter(lambda x: (f"{x['title']} {x['type']}" != MainWindow.download_list_view.currentItem().text()), MainWindow.download_list))
+            print(len(MainWindow.download_list))
+            listItems = MainWindow.download_list_view.selectedItems()
+            for item in listItems:
+                MainWindow.download_list_view.takeItem(MainWindow.download_list_view.row(item))
+            #MainWindow.download_list_view.takeItem(0)
             if len(MainWindow.download_list) != 0:
-                MainWindow.progress_bar.setValue(0)
+                #MainWindow.progress_bar.setValue(0)
                 t = Thread(target=DownloadScreen.stream_down)
                 t.start()
         except Exception as e:
             print(e)
-        """
         
     def download(self):
         MainWindow.current_yt_object_url = str(self.browser.url().url())
@@ -399,10 +417,10 @@ class MainWindow(QMainWindow):
             show_critical_messagebox("can't download")
             
     def start_yt_download(self, p=False):
-        self.download_window = DownloadScreen()
+        MainWindow.download_window = DownloadScreen()
         if not p:
-            self.download_window.setWindowModality(Qt.ApplicationModal)
-            self.download_window.show()
+            MainWindow.download_window.setWindowModality(Qt.ApplicationModal)
+            MainWindow.download_window.show()
         self.download_window.download(p)
 
     # method called by the home action
