@@ -56,50 +56,54 @@ class PlayListDownloadSettingScreen(QWidget):
         start = True if len(MainWindow.download_list) == 0 else False
         PlayListDownloadSettingScreen.currentQuality = PlayListDownloadSettingScreen.qualityRowCombo.currentText()
         PlayListDownloadSettingScreen.currentType = PlayListDownloadSettingScreen.typeRowCombo.currentText()
+        MainWindow.working_label.setText("processing...")
         try:
             for url in MainWindow.current_playlist_object:
-                MainWindow.current_yt_object_url = url
-                MainWindow.current_yt_object = YouTube(url,on_progress_callback=MainWindow.progress_function,on_complete_callback=MainWindow.complete_function,use_oauth=False,
-            allow_oauth_cache=True)
-                print(url)
-                if PlayListDownloadSettingScreen.currentType == "complete":
-                    t = {}
-                    for stream in MainWindow.current_yt_object.streams.filter(progressive=True):
-                        t[stream.resolution.split('p')[0]] = stream
-                    if PlayListDownloadSettingScreen.currentQuality == "High":
-                        stream = t[str(max(t.keys()))]
-                    elif PlayListDownloadSettingScreen.currentQuality == "Medium":
-                        stream = t[int(len(t.keys())/2)]
-                    elif PlayListDownloadSettingScreen.currentQuality == "Low":
-                        stream = t[str(min(t.keys()))]
-                elif PlayListDownloadSettingScreen.currentType == "video":
-                    t = {}
-                    for stream in MainWindow.current_yt_object.streams.filter(adaptive=True):
-                        if stream.type != "audio":
+                try:
+                    MainWindow.current_yt_object_url = url
+                    MainWindow.current_yt_object = YouTube(url,on_progress_callback=MainWindow.progress_function,on_complete_callback=MainWindow.complete_function,use_oauth=False,
+                allow_oauth_cache=True)
+                    if PlayListDownloadSettingScreen.currentType == "complete":
+                        t = {}
+                        for stream in MainWindow.current_yt_object.streams.filter(progressive=True):
                             t[stream.resolution.split('p')[0]] = stream
-                    if stream.type != "audio":
                         if PlayListDownloadSettingScreen.currentQuality == "High":
                             stream = t[str(max(t.keys()))]
                         elif PlayListDownloadSettingScreen.currentQuality == "Medium":
                             stream = t[int(len(t.keys())/2)]
                         elif PlayListDownloadSettingScreen.currentQuality == "Low":
                             stream = t[str(min(t.keys()))]
-                elif PlayListDownloadSettingScreen.currentType == "audio":
-                    t = {}
-                    for stream in MainWindow.current_yt_object.streams.filter(only_audio=True):
-                        t[stream.abr.split('kbps')[0]] = stream
-                    if PlayListDownloadSettingScreen.currentQuality == "High":
-                        stream = t[str(max(t.keys()))]
-                    elif PlayListDownloadSettingScreen.currentQuality == "Medium":
-                        stream = t[int(len(t.keys())/2)]
-                    elif PlayListDownloadSettingScreen.currentQuality == "Low":
-                        stream = t[str(min(t.keys()))]
-                DownloadScreen.selected_ressource = f"{PlayListDownloadSettingScreen.currentType} {stream.resolution} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
-                if PlayListDownloadSettingScreen.currentType == "audio":
-                    DownloadScreen.selected_ressource = f"audio {stream.mime_type.split('/')[1]} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
-                DownloadScreen.stream_to_download[MainWindow.current_yt_object.title + f" {DownloadScreen.selected_ressource}"] = stream
-                DownloadScreen.is_playlist = True
-                DownloadScreen.get_ressource()
+                    elif PlayListDownloadSettingScreen.currentType == "video":
+                        t = {}
+                        for stream in MainWindow.current_yt_object.streams.filter(adaptive=True):
+                            if stream.type != "audio":
+                                t[stream.resolution.split('p')[0]] = stream
+                        if stream.type != "audio":
+                            if PlayListDownloadSettingScreen.currentQuality == "High":
+                                stream = t[str(max(t.keys()))]
+                            elif PlayListDownloadSettingScreen.currentQuality == "Medium":
+                                stream = t[int(len(t.keys())/2)]
+                            elif PlayListDownloadSettingScreen.currentQuality == "Low":
+                                stream = t[str(min(t.keys()))]
+                    elif PlayListDownloadSettingScreen.currentType == "audio":
+                        t = {}
+                        for stream in MainWindow.current_yt_object.streams.filter(only_audio=True):
+                            t[stream.abr.split('kbps')[0]] = stream
+                        if PlayListDownloadSettingScreen.currentQuality == "High":
+                            stream = t[str(max(t.keys()))]
+                        elif PlayListDownloadSettingScreen.currentQuality == "Medium":
+                            stream = t[int(len(t.keys())/2)]
+                        elif PlayListDownloadSettingScreen.currentQuality == "Low":
+                            stream = t[str(min(t.keys()))]
+                    DownloadScreen.selected_ressource = f"{PlayListDownloadSettingScreen.currentType} {stream.resolution} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
+                    if PlayListDownloadSettingScreen.currentType == "audio":
+                        DownloadScreen.selected_ressource = f"audio {stream.mime_type.split('/')[1]} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
+                    DownloadScreen.stream_to_download[MainWindow.current_yt_object.title + f" {DownloadScreen.selected_ressource}"] = stream
+                    DownloadScreen.is_playlist = True
+                    DownloadScreen.get_ressource()
+                except:
+                    pass
+            MainWindow.working_label.setText("")
             DownloadScreen.is_playlist = False
             if start:
                 MainWindow.download_list_view.setCurrentRow(0)
@@ -107,6 +111,7 @@ class PlayListDownloadSettingScreen(QWidget):
                 t.start()
         except Exception as e:
             print(e)
+            MainWindow.working_label.setText("")
             if start:
                 MainWindow.download_list_view.setCurrentRow(0)
                 t = Thread(target=DownloadScreen.stream_down)
@@ -197,32 +202,35 @@ class DownloadScreen(QWidget):
             print(e)
 
     def pick_streams(self):
-        self.streams = MainWindow.current_yt_object.streams
-        progressive_streams = self.streams.filter(progressive=True)
-        videos_streams = self.streams.filter(only_video=True)
-        audios_streams = self.streams.filter(only_audio=True)
-        for i in reversed(range(self.layout.count())):
-            self.layout.itemAt(i).widget().deleteLater()
-        self.layout.addLayout(self.all_in_one_ctn)
-        self.layout.addLayout(self.video_ctn)
-        self.layout.addLayout(self.audio_ctn)
-        self.layout.addWidget(self.download_btn)
-        
-        
-        for stream in progressive_streams:
-            resource_name = f"complete {stream.resolution} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
-            self.streams_dic[resource_name] = stream
-            QListWidgetItem(resource_name, self.all_in_one_list_view)
-        
-        for stream in videos_streams:
-            resource_name = f"video {stream.resolution} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
-            self.streams_dic[resource_name] = stream
-            QListWidgetItem(resource_name, self.video_list_view)
+        try:
+            self.streams = MainWindow.current_yt_object.streams
+            progressive_streams = self.streams.filter(progressive=True)
+            videos_streams = self.streams.filter(only_video=True)
+            audios_streams = self.streams.filter(only_audio=True)
+            for i in reversed(range(self.layout.count())):
+                self.layout.itemAt(i).widget().deleteLater()
+            self.layout.addLayout(self.all_in_one_ctn)
+            self.layout.addLayout(self.video_ctn)
+            self.layout.addLayout(self.audio_ctn)
+            self.layout.addWidget(self.download_btn)
             
-        for stream in audios_streams:
-            resource_name = f"audio {stream.mime_type.split('/')[1]} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
-            self.streams_dic[resource_name] = stream
-            QListWidgetItem(resource_name, self.audio_list_view)
+            
+            for stream in progressive_streams:
+                resource_name = f"complete {stream.resolution} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
+                self.streams_dic[resource_name] = stream
+                QListWidgetItem(resource_name, self.all_in_one_list_view)
+            
+            for stream in videos_streams:
+                resource_name = f"video {stream.resolution} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
+                self.streams_dic[resource_name] = stream
+                QListWidgetItem(resource_name, self.video_list_view)
+                
+            for stream in audios_streams:
+                resource_name = f"audio {stream.mime_type.split('/')[1]} [" + "{0:.2f}".format(stream.filesize/1000000) + " MB" + "]"
+                self.streams_dic[resource_name] = stream
+                QListWidgetItem(resource_name, self.audio_list_view)
+        except Exception as e:
+            show_critical_messagebox("age restriction")
         
 
     def download(self, p):
@@ -255,6 +263,7 @@ class MainWindow(QMainWindow):
     progress_bar = None
     download_window = None
     current_download_title = None
+    working_label = None
  
     # constructor
     def __init__(self, *args, **kwargs):
@@ -273,6 +282,7 @@ class MainWindow(QMainWindow):
         self.download_btn = QPushButton("Download")
         self.current_downloading_remaind_count = 0
         self.progress_indicators_layout = QVBoxLayout()
+        MainWindow.working_label = QLabel()
         MainWindow.current_download_title = QLabel()
         MainWindow.progress_bar = QProgressBar(self)
         
@@ -379,6 +389,7 @@ class MainWindow(QMainWindow):
         self.progress_indicators_layout.addWidget(self.progress_bar)
         self.progress_indicators_layout.addWidget(MainWindow.current_download_title)
         self.bottomtoolbarlayout.addWidget(self.download_btn)
+        self.bottomtoolbarlayout.addWidget(MainWindow.working_label)
         self.download_btn.clicked.connect(self.download)
         
     def normalize_download_list_views_click(self):
@@ -386,15 +397,11 @@ class MainWindow(QMainWindow):
         print(MainWindow.download_list_view.currentRow())
  
     def progress_function(stream, chunk, bytes_remaining):
-        pass
-        """
         filesize = stream.filesize
         current = ((filesize - bytes_remaining)/filesize)
-        MainWindow.progress_bar.setValue(math.floor(current*100))
-        """
+        #MainWindow.progress_bar.setValue(math.floor(current*100))
         
     def complete_function(stream, filepath):
-        print("download finish.")
         try:
             MainWindow.download_list.pop(0)
             MainWindow.download_list_view.takeItem(0)
