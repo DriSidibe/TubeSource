@@ -45,15 +45,15 @@ def window():
     sys.exit(app.exec_())
 
 
-def show_info_messagebox():
+def show_info_messagebox(message="Warning messsage"):
     msg = QMessageBox()
     msg.setIcon(QMessageBox.Information)
 
     # setting message for Message Box
-    msg.setText("Information ")
+    msg.setText(message)
 
     # setting Message box window title
-    msg.setWindowTitle("Information MessageBox")
+    msg.setWindowTitle("Information")
 
     # declaring buttons on Message Box
     msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
@@ -70,7 +70,7 @@ def show_warning_messagebox():
     msg.setText("Warning")
 
     # setting Message box window title
-    msg.setWindowTitle("Warning MessageBox")
+    msg.setWindowTitle("Warning")
 
     # declaring buttons on Message Box
     msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
@@ -87,7 +87,7 @@ def show_question_messagebox():
     msg.setText("Question")
 
     # setting Message box window title
-    msg.setWindowTitle("Question MessageBox")
+    msg.setWindowTitle("Question")
 
     # declaring buttons on Message Box
     msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)

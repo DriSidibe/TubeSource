@@ -10,9 +10,10 @@ import os
 import sys
 from pytube import YouTube, Playlist, extract
 
-from message_box import show_critical_messagebox
+from message_box import show_critical_messagebox, show_info_messagebox
 
 TUBESOURCE_DOWNLOAD_DIR = None
+is_in_processing = False
 
 class PlayListDownloadSettingScreen(QWidget):
     qualityRowCombo = None
@@ -53,15 +54,17 @@ class PlayListDownloadSettingScreen(QWidget):
         t.start()
         
     def parse_playlist(self):
+        global is_in_processing
         start = True if len(MainWindow.download_list) == 0 else False
         PlayListDownloadSettingScreen.currentQuality = PlayListDownloadSettingScreen.qualityRowCombo.currentText()
         PlayListDownloadSettingScreen.currentType = PlayListDownloadSettingScreen.typeRowCombo.currentText()
         MainWindow.working_label.setText("processing...")
         try:
+            is_in_processing = True
             for url in MainWindow.current_playlist_object:
                 try:
                     MainWindow.current_yt_object_url = url
-                    MainWindow.current_yt_object = YouTube(url,on_progress_callback=MainWindow.progress_function,on_complete_callback=MainWindow.complete_function,use_oauth=False,
+                    MainWindow.current_yt_object = YouTube(url,on_progress_callback=MainWindow.progress_function,on_complete_callback=MainWindow.complete_function,use_oauth=True,
                 allow_oauth_cache=True)
                     if PlayListDownloadSettingScreen.currentType == "complete":
                         t = {}
@@ -103,6 +106,7 @@ class PlayListDownloadSettingScreen(QWidget):
                     DownloadScreen.get_ressource()
                 except:
                     pass
+            is_in_processing = False
             MainWindow.working_label.setText("")
             DownloadScreen.is_playlist = False
             if start:
@@ -184,17 +188,22 @@ class DownloadScreen(QWidget):
         self.video_list_view.clearSelection()
 
     def get_ressource():
+        global is_in_processing
         start = False
         try:
             MainWindow.download_window.close()
             if not DownloadScreen.is_playlist:
+                is_in_processing = True
                 DownloadScreen.stream_to_download[MainWindow.current_yt_object.title + f" {DownloadScreen.selected_ressource}"] = DownloadScreen.streams_dic[DownloadScreen.selected_ressource]
             if len(MainWindow.download_list) == 0:
                 start = True
             down_itm = {"title": MainWindow.current_yt_object.title, "id":extract.video_id(MainWindow.current_yt_object_url), "type": DownloadScreen.selected_ressource}
             if down_itm not in MainWindow.download_list:
                 MainWindow.download_list.append(down_itm)
+                MainWindow.download_list_len.setText(f"Total: {str(len(MainWindow.download_list))}")
                 QListWidgetItem(MainWindow.current_yt_object.title + f" {DownloadScreen.selected_ressource}", MainWindow.download_list_view)
+            if not DownloadScreen.is_playlist:
+                is_in_processing = False
             if start and not DownloadScreen.is_playlist:
                 t = Thread(target=DownloadScreen.stream_down)
                 t.start()
@@ -230,6 +239,7 @@ class DownloadScreen(QWidget):
                 self.streams_dic[resource_name] = stream
                 QListWidgetItem(resource_name, self.audio_list_view)
         except Exception as e:
+            MainWindow.download_window.close()
             show_critical_messagebox("age restriction")
         
 
@@ -264,6 +274,7 @@ class MainWindow(QMainWindow):
     download_window = None
     current_download_title = None
     working_label = None
+    download_list_len = None
  
     # constructor
     def __init__(self, *args, **kwargs):
@@ -280,7 +291,7 @@ class MainWindow(QMainWindow):
         self.progress_container = QHBoxLayout()
         self.bottomtoolbarlayout = QHBoxLayout()
         self.download_btn = QPushButton("Download")
-        self.current_downloading_remaind_count = 0
+        MainWindow.download_list_len = QLabel("Total: 0")
         self.progress_indicators_layout = QVBoxLayout()
         MainWindow.working_label = QLabel()
         MainWindow.current_download_title = QLabel()
@@ -299,7 +310,9 @@ class MainWindow(QMainWindow):
         self.browser.setUrl(QUrl("https://www.youtube.com"))
         MainWindow.progress_bar.setValue(0)
         self.download_list_view_layout.addWidget(MainWindow.download_list_view)
+        self.download_list_view_layout.addWidget(MainWindow.download_list_len)
         self.download_list_view.currentRowChanged.connect(lambda: self.normalize_download_list_views_click())
+        MainWindow.download_list_view.setMaximumWidth(300)
 
         # adding action when url get changed
         self.browser.urlChanged.connect(self.update_urlbar)
@@ -404,27 +417,34 @@ class MainWindow(QMainWindow):
     def complete_function(stream, filepath):
         try:
             MainWindow.download_list.pop(0)
+            MainWindow.download_list_len.setText(f"Total: {str(len(MainWindow.download_list))}")
             MainWindow.download_list_view.takeItem(0)
             if len(MainWindow.download_list) != 0:
                 #MainWindow.progress_bar.setValue(0)
                 t = Thread(target=DownloadScreen.stream_down)
                 t.start()
+            else:
+                MainWindow.current_download_title.setText("")
         except Exception as e:
             print(e)
         
     def download(self):
-        MainWindow.current_yt_object_url = str(self.browser.url().url())
-        try:
-            if "playlist" in MainWindow.current_yt_object_url:
-                MainWindow.current_playlist_object = Playlist(MainWindow.current_yt_object_url)
-                self.start_yt_download(True)
-            else:
-                MainWindow.current_yt_object = YouTube(MainWindow.current_yt_object_url,on_progress_callback=MainWindow.progress_function,on_complete_callback=MainWindow.complete_function,use_oauth=False,
-        allow_oauth_cache=True)
-                self.start_yt_download()
-        except Exception as e:
-            print(e)
-            show_critical_messagebox("can't download")
+        global is_in_processing
+        if not is_in_processing:
+            MainWindow.current_yt_object_url = str(self.browser.url().url())
+            try:
+                if "playlist" in MainWindow.current_yt_object_url:
+                    MainWindow.current_playlist_object = Playlist(MainWindow.current_yt_object_url)
+                    self.start_yt_download(True)
+                else:
+                    MainWindow.current_yt_object = YouTube(MainWindow.current_yt_object_url,on_progress_callback=MainWindow.progress_function,on_complete_callback=MainWindow.complete_function,use_oauth=True,
+            allow_oauth_cache=True)
+                    self.start_yt_download()
+            except Exception as e:
+                print(e)
+                show_critical_messagebox("can't download")
+        else:
+            show_info_messagebox("Some task are already running, so please wait!")
             
     def start_yt_download(self, p=False):
         MainWindow.download_window = DownloadScreen()
