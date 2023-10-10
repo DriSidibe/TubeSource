@@ -1,5 +1,4 @@
 # importing required libraries
-import math
 from threading import Thread
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
@@ -302,7 +301,7 @@ class MainWindow(QMainWindow):
         
         #TUBESOURCE_DOWNLOAD_DIR = os.environ.get('TUBESOURCE_DOWNLOAD_DIR', None)
         if TUBESOURCE_DOWNLOAD_DIR == None:
-            TUBESOURCE_DOWNLOAD_DIR = 'C:\\Users\\dsidi\\Downloads'
+            TUBESOURCE_DOWNLOAD_DIR = 'C:'+os.getenv('HOMEPATH')+'\\Downloads'
             os.environ['TUBESOURCE_DOWNLOAD_DIR'] = TUBESOURCE_DOWNLOAD_DIR
  
 
