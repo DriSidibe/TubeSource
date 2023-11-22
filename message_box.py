@@ -112,5 +112,20 @@ def show_critical_messagebox(message="Error messsage"):
     # start the app
     retval = msg.exec_()
 
+class CriticalMessageBox(QMessageBox):
+    def __init__(self, message):
+        super().__init__()
+        self.setText(message)
+        self.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+
+    def show(self):
+        return super().exec_()
+    
+    def closeEvent(self, event):
+        reply = QMessageBox.question(self, 'Quit', 'Are you sure you want to quit?',
+        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.close()
+
 if __name__ == '__main__':
     window()

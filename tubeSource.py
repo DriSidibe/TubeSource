@@ -8,11 +8,14 @@ from PyQt5.QtPrintSupport import *
 import os
 import sys
 from pytube import YouTube, Playlist, extract
+from datetime import datetime
+import math
 
 from message_box import show_critical_messagebox, show_info_messagebox
 
 TUBESOURCE_DOWNLOAD_DIR = None
 is_in_processing = False
+oldTimestamp = 0
 
 class PlayListDownloadSettingScreen(QWidget):
     qualityRowCombo = None
@@ -117,6 +120,7 @@ class PlayListDownloadSettingScreen(QWidget):
             MainWindow.working_label.setText("")
             if start:
                 MainWindow.download_list_view.setCurrentRow(0)
+                oldTimestamp = datetime.now().timestamp()
                 t = Thread(target=DownloadScreen.stream_down)
                 t.start()
 
@@ -210,6 +214,7 @@ class DownloadScreen(QWidget):
             print(e)
 
     def pick_streams(self):
+        global oldTimestamp
         try:
             self.streams = MainWindow.current_yt_object.streams
             progressive_streams = self.streams.filter(progressive=True)
@@ -238,8 +243,11 @@ class DownloadScreen(QWidget):
                 self.streams_dic[resource_name] = stream
                 QListWidgetItem(resource_name, self.audio_list_view)
         except Exception as e:
+            print(e)
             MainWindow.download_window.close()
-            show_critical_messagebox("age restriction")
+            MainWindow.error_message.setText("age restriction")
+            oldTimestamp = datetime.now().timestamp()
+            Thread(target=MainWindow.hideErrorMessageBox).start()
         
 
     def download(self, p):
@@ -274,6 +282,7 @@ class MainWindow(QMainWindow):
     current_download_title = None
     working_label = None
     download_list_len = None
+    error_message = None
  
     # constructor
     def __init__(self, *args, **kwargs):
@@ -290,6 +299,7 @@ class MainWindow(QMainWindow):
         self.progress_container = QHBoxLayout()
         self.bottomtoolbarlayout = QHBoxLayout()
         self.download_btn = QPushButton("Download")
+        MainWindow.error_message = QLabel("")
         MainWindow.download_list_len = QLabel("Total: 0")
         self.progress_indicators_layout = QVBoxLayout()
         MainWindow.working_label = QLabel()
@@ -310,8 +320,10 @@ class MainWindow(QMainWindow):
         MainWindow.progress_bar.setValue(0)
         self.download_list_view_layout.addWidget(MainWindow.download_list_view)
         self.download_list_view_layout.addWidget(MainWindow.download_list_len)
+        self.download_list_view_layout.addWidget(MainWindow.error_message)
         self.download_list_view.currentRowChanged.connect(lambda: self.normalize_download_list_views_click())
         MainWindow.download_list_view.setMaximumWidth(300)
+        MainWindow.error_message.setStyleSheet("color: red;")
 
         # adding action when url get changed
         self.browser.urlChanged.connect(self.update_urlbar)
@@ -408,18 +420,19 @@ class MainWindow(QMainWindow):
         MainWindow.download_list_view.setCurrentRow(0)
         print(MainWindow.download_list_view.currentRow())
  
-    def progress_function(stream, chunk, bytes_remaining):
+    def progress_function(self,stream, chunk,file_handle, bytes_remaining):
         filesize = stream.filesize
         current = ((filesize - bytes_remaining)/filesize)
-        #MainWindow.progress_bar.setValue(math.floor(current*100))
+        MainWindow.progress_bar.setValue(math.floor(current*100))
+        print("in progress")
         
-    def complete_function(stream, filepath):
+    def complete_function(self,stream, filepath):
         try:
             MainWindow.download_list.pop(0)
             MainWindow.download_list_len.setText(f"Total: {str(len(MainWindow.download_list))}")
             MainWindow.download_list_view.takeItem(0)
             if len(MainWindow.download_list) != 0:
-                #MainWindow.progress_bar.setValue(0)
+                MainWindow.progress_bar.setValue(0)
                 t = Thread(target=DownloadScreen.stream_down)
                 t.start()
             else:
@@ -436,7 +449,7 @@ class MainWindow(QMainWindow):
                     MainWindow.current_playlist_object = Playlist(MainWindow.current_yt_object_url)
                     self.start_yt_download(True)
                 else:
-                    MainWindow.current_yt_object = YouTube(MainWindow.current_yt_object_url,on_progress_callback=MainWindow.progress_function,on_complete_callback=MainWindow.complete_function,use_oauth=True,
+                    MainWindow.current_yt_object = YouTube(MainWindow.current_yt_object_url,on_progress_callback=self.progress_function,on_complete_callback=self.complete_function,use_oauth=True,
             allow_oauth_cache=True)
                     self.start_yt_download()
             except Exception as e:
@@ -478,6 +491,11 @@ class MainWindow(QMainWindow):
 
         # setting cursor position of the url bar
         self.urlbar.setCursorPosition(0)
+
+    def hideErrorMessageBox():
+        while MainWindow.error_message.text() != "":
+            if datetime.now().timestamp() - oldTimestamp > 3:
+                MainWindow.error_message.setText("")
  
  
 # creating a pyQt5 application
